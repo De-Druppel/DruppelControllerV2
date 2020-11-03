@@ -7,6 +7,7 @@
 #include <PubSubClient.h>
 #include <credentials.h>
 #include <ESP8266WiFi.h>
+#include <main.h>
 
 WiFiClient wifiClient;
 PubSubClient pubsubClient;
@@ -25,9 +26,25 @@ long publishMoistureInterval = 1000 * 60 * 5;
 /// Setup is called once when the ESP8266 is starting.
 /// Used for configuration.
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   initializeTopics();
-  pubsubClient = configureMQTTClient(pubsubClient, wifiClient);
+  pubsubClient = configureMQTTClient();
+
+  delay(1000);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  Serial.printf("Attempting to connect to Wifi SSID: %s. \n", SSID);
+  wifiStatus = WiFi.begin(SSID, WIFI_PASSWORD);
+  
+  int i = 0;
+  while (WiFi.status() != WL_CONNECTED) { // Wait for the Wi-Fi to connect
+    delay(1000);
+    Serial.print(++i); Serial.print(' ');
+  }
+
+  Serial.println('\n');
+  Serial.println("Connection established!");  
+  Serial.print("IP address:\t");
+  Serial.println(WiFi.localIP()); 
 }
 
 /*
@@ -46,7 +63,6 @@ void loop() {
   //We don't need a delay on making a measurement right?
   makeMoistureMeasurement();
 
-  if (wifiClient.connected()) {
     //connect to the mqtt server only when wifi is connected and there is no mqtt connection
     if (!pubsubClient.connected()) {
       connectMQTT();
@@ -60,23 +76,8 @@ void loop() {
         publishMeasurements();
       }
     }
-  } else { //if not connected: connect
-    connectWifi();
-  }
 
   delay(1000);
-}
-
-/// Connect to wifi
-/// @ssid SSID of the wifi network you want to connect to.
-/// @wifiPassword Password of the wifi network.
-void connectWifi() {
-  Serial.printf("Attempting to connect to Wifi SSID: %s. \n", SSID);
-  wifiStatus = WiFi.begin(SSID, WIFI_PASSWORD);
-
-  if (wifiStatus == WL_CONNECTED) {
-    Serial.println("Connection succesfully established.");
-  }
 }
 
 /// Configure the MQTT client.
@@ -85,7 +86,7 @@ void connectWifi() {
 /// @mqttHost Hostname or ip of the MQTT server you want to connect to.
 /// @mqttPort Port that is used to connect to the MQTT server.
 /// returns: Configured PubSubClient object.
-PubSubClient configureMQTTClient(PubSubClient pubSubClient, WiFiClient wifiClient) {
+PubSubClient configureMQTTClient() {
   PubSubClient pubsubClient(wifiClient);
   pubsubClient.setServer(MQTT_HOST, MQTT_PORT);
   return pubsubClient;
@@ -97,10 +98,14 @@ PubSubClient configureMQTTClient(PubSubClient pubSubClient, WiFiClient wifiClien
 /// @mqttUser Username for the MQTT server
 /// @mqttPassword Password for the MQTT server.
 void connectMQTT() {
+  Serial.println("Connecting to MQTT broker");
   pubsubClient.connect(ESP_ID.c_str(), MQTT_USER, MQTT_PASSWORD);
   if (pubsubClient.connected()) {
     Serial.println("Successfully connected to MQTT broker.");
     pubsubClient.subscribe(SUBSCRIPTION_TOPIC);
+  }
+  else{
+    Serial.println("Failed to connect");
   }
 
   pubsubClient.setCallback(callback);
